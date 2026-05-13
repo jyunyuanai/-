@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 LINE_CHANNEL_ACCESS_TOKEN = "1RM094zVq4JrDgCEqAh45qACyADriLlIXLpFh46bPKp7rgFOjzaUEu2Mx8qzQYSe8NyjTCIZv8AK+hMiwd5FB2Kt9o4D5++wtYR+fSyAT5oZxEbqZhy3dKTlTEddKVcrBfyxXG+Mst/nOUcJ+j6LPQdB04t89/1O/w1cDnyilFU="
 
 # 先暫時填 test
-LINE_USER_ID = "test"
+LINE_USER_ID = "Ubbc1a4ef1b30349904e30e3376f30eff"
 
 URL = "https://www.taiwanbuying.com.tw/Query_AreaAction.ASP"
 
