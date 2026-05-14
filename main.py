@@ -1,10 +1,16 @@
 import requests
 from bs4 import BeautifulSoup
+import time
 
 LINE_CHANNEL_ACCESS_TOKEN = "貼你的 LINE Channel access token"
 LINE_USER_ID = "Ubbc1a4ef1b30349904e30e3376f30eff"
 
-URL = "https://www.taiwanbuying.com.tw/Query_AreaAction.ASP"
+URLS = [
+    "https://www.taiwanbuying.com.tw/Query_AreaAction.ASP",
+    "http://www.taiwanbuying.com.tw/Query_AreaAction.ASP",
+    "https://taiwanbuying.com.tw/Query_AreaAction.ASP",
+    "http://taiwanbuying.com.tw/Query_AreaAction.ASP",
+]
 
 def send_line_message(message):
     url = "https://api.line.me/v2/bot/message/push"
@@ -30,13 +36,38 @@ def send_line_message(message):
 
 
 def fetch_cases():
-    try:
-        response = requests.get(URL, timeout=30)
-        response.encoding = "utf-8"
-    except Exception as error:
-        return None, None, None, str(error)
+    last_error = ""
 
-    soup = BeautifulSoup(response.text, "html.parser")
+    for url in URLS:
+        for attempt in range(3):
+            try:
+                print(f"嘗試連線：{url}，第 {attempt + 1} 次")
+
+                response = requests.get(
+                    url,
+                    timeout=30,
+                    headers={
+                        "User-Agent": "Mozilla/5.0"
+                    }
+                )
+
+                response.encoding = "utf-8"
+
+                if response.status_code == 200:
+                    return parse_cases(response.text), None
+
+                last_error = f"{url} 狀態碼：{response.status_code}"
+
+            except Exception as error:
+                last_error = str(error)
+                print(last_error)
+                time.sleep(5)
+
+    return None, last_error
+
+
+def parse_cases(html):
+    soup = BeautifulSoup(html, "html.parser")
     text = soup.get_text("\n")
 
     design_cases = []
@@ -56,32 +87,47 @@ def fetch_cases():
         elif "設計" in line:
             design_cases.append(line)
 
-    return design_cases[:10], supervision_cases[:10], both_cases[:10], None
+    return design_cases[:10], supervision_cases[:10], both_cases[:10]
 
 
 def build_message(design_cases, supervision_cases, both_cases):
     message = "今日採購案分類通知\n\n"
 
     message += "【1. 設計】\n"
-    message += "\n".join(f"{i}. {case}" for i, case in enumerate(design_cases, 1)) if design_cases else "無"
-    message += "\n\n【2. 監造】\n"
-    message += "\n".join(f"{i}. {case}" for i, case in enumerate(supervision_cases, 1)) if supervision_cases else "無"
-    message += "\n\n【3. 設計加監造】\n"
-    message += "\n".join(f"{i}. {case}" for i, case in enumerate(both_cases, 1)) if both_cases else "無"
+    if design_cases:
+        for i, case in enumerate(design_cases, 1):
+            message += f"{i}. {case}\n"
+    else:
+        message += "無\n"
+
+    message += "\n【2. 監造】\n"
+    if supervision_cases:
+        for i, case in enumerate(supervision_cases, 1):
+            message += f"{i}. {case}\n"
+    else:
+        message += "無\n"
+
+    message += "\n【3. 設計加監造】\n"
+    if both_cases:
+        for i, case in enumerate(both_cases, 1):
+            message += f"{i}. {case}\n"
+    else:
+        message += "無\n"
 
     return message
 
 
 def main():
-    design_cases, supervision_cases, both_cases, error = fetch_cases()
+    cases, error = fetch_cases()
 
     if error:
         message = (
             "採購網爬蟲執行失敗\n\n"
-            "原因：暫時連不上台灣採購公報網。\n\n"
+            "原因：GitHub 暫時連不上台灣採購公報網。\n\n"
             f"錯誤內容：{error}"
         )
     else:
+        design_cases, supervision_cases, both_cases = cases
         message = build_message(design_cases, supervision_cases, both_cases)
 
     print(message)
