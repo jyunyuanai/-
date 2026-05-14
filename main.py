@@ -1,141 +1,146 @@
-import requests
-from bs4 import BeautifulSoup
-from urllib.parse import quote
-import time
+const LINE_CHANNEL_ACCESS_TOKEN = "1RM094zVq4JrDgCEqAh45qACyADriLlIXLpFh46bPKp7rgFOjzaUEu2Mx8qzQYSe8NyjTCIZv8AK+hMiwd5FB2Kt9o4D5++wtYR+fSyAT5oZxEbqZhy3dKTlTEddKVcrBfyxXG+Mst/nOUcJ+j6LPQdB04t89/1O/w1cDnyilFU=";
+const TAIWANBUYING_URL = "https://www.taiwanbuying.com.tw/Query_AreaAction.ASP";
 
-LINE_CHANNEL_ACCESS_TOKEN = "1RM094zVq4JrDgCEqAh45qACyADriLlIXLpFh46bPKp7rgFOjzaUEu2Mx8qzQYSe8NyjTCIZv8AK+hMiwd5FB2Kt9o4D5++wtYR+fSyAT5oZxEbqZhy3dKTlTEddKVcrBfyxXG+Mst/nOUcJ+j6LPQdB04t89/1O/w1cDnyilFU="
-LINE_USER_ID = "Ubbc1a4ef1b30349904e30e3376f30eff"
+function doPost(e) {
+  const body = JSON.parse(e.postData.contents);
+  const event = body.events[0];
 
-BASE_URL = "https://www.taiwanbuying.com.tw/Query_KeywordAction.ASP"
+  if (!event || event.type !== "message" || event.message.type !== "text") {
+    return ContentService.createTextOutput("OK");
+  }
 
-KEYWORDS = {
-    "設計": "設計",
-    "監造": "監造",
-    "設計加監造": "設計監造"
+  const replyToken = event.replyToken;
+  const userText = event.message.text.trim();
+
+  let message = "";
+
+  if (userText === "設計") {
+    message = buildCategoryMessage("設計");
+  } else if (userText === "監造") {
+    message = buildCategoryMessage("監造");
+  } else if (userText === "設計監造" || userText === "設計加監造") {
+    message = buildCategoryMessage("設計監造");
+  } else if (userText === "今日採購" || userText === "查詢") {
+    message = buildAllMessage();
+  } else {
+    message = "請輸入：\n設計\n監造\n設計監造\n今日採購";
+  }
+
+  replyMessage(replyToken, message);
+  return ContentService.createTextOutput("OK");
 }
 
-def send_line_message(message):
-    url = "https://api.line.me/v2/bot/message/push"
+function buildCategoryMessage(category) {
+  const cases = fetchCases();
+  let list = [];
 
-    headers = {
-        "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}",
-        "Content-Type": "application/json"
+  if (category === "設計") {
+    list = cases.design;
+  } else if (category === "監造") {
+    list = cases.supervision;
+  } else if (category === "設計監造") {
+    list = cases.both;
+  }
+
+  let message = "今日【" + category + "】標案\n\n";
+
+  if (list.length === 0) {
+    message += "目前沒有找到符合的標案。";
+  } else {
+    list.slice(0, 10).forEach(function(item, index) {
+      message += (index + 1) + ". " + item + "\n\n";
+    });
+  }
+
+  return message;
+}
+
+function buildAllMessage() {
+  const cases = fetchCases();
+
+  let message = "今日採購案分類通知\n\n";
+
+  message += "【設計】\n";
+  message += cases.design.length ? cases.design.slice(0, 5).join("\n") : "無";
+
+  message += "\n\n【監造】\n";
+  message += cases.supervision.length ? cases.supervision.slice(0, 5).join("\n") : "無";
+
+  message += "\n\n【設計監造】\n";
+  message += cases.both.length ? cases.both.slice(0, 5).join("\n") : "無";
+
+  return message;
+}
+
+function fetchCases() {
+  const response = UrlFetchApp.fetch(TAIWANBUYING_URL, {
+    method: "get",
+    muteHttpExceptions: true,
+    headers: {
+      "User-Agent": "Mozilla/5.0"
     }
+  });
 
-    data = {
-        "to": LINE_USER_ID,
-        "messages": [
-            {
-                "type": "text",
-                "text": message[:4900]
-            }
-        ]
+  const html = response.getContentText("UTF-8");
+  const text = html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/tr>/gi, "\n")
+    .replace(/<\/td>/gi, " ")
+    .replace(/<[^>]+>/g, "\n")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&quot;/g, "\"")
+    .replace(/&amp;/g, "&");
+
+  const lines = text.split("\n").map(function(line) {
+    return line.trim();
+  }).filter(function(line) {
+    return line.length > 0;
+  });
+
+  const design = [];
+  const supervision = [];
+  const both = [];
+
+  lines.forEach(function(line) {
+    if (!/^\d+\./.test(line)) return;
+    if (line.indexOf(":") === -1 && line.indexOf("：") === -1) return;
+
+    if (line.indexOf("設計") !== -1 && line.indexOf("監造") !== -1) {
+      both.push(line);
+    } else if (line.indexOf("監造") !== -1) {
+      supervision.push(line);
+    } else if (line.indexOf("設計") !== -1) {
+      design.push(line);
     }
+  });
 
-    response = requests.post(url, headers=headers, json=data, timeout=20)
-    print(response.status_code)
-    print(response.text)
+  return {
+    design: design,
+    supervision: supervision,
+    both: both
+  };
+}
 
+function replyMessage(replyToken, text) {
+  const url = "https://api.line.me/v2/bot/message/reply";
 
-def get_html_by_keyword(keyword):
-    encoded_keyword = quote(keyword)
-
-    urls = [
-        f"{BASE_URL}?keyword={encoded_keyword}",
-        f"{BASE_URL}?KeyWord={encoded_keyword}",
-        f"{BASE_URL}?KEYWORD={encoded_keyword}",
-        f"{BASE_URL}?SearchKeyword={encoded_keyword}",
+  const payload = {
+    replyToken: replyToken,
+    messages: [
+      {
+        type: "text",
+        text: text.substring(0, 4900)
+      }
     ]
+  };
 
-    last_error = ""
-
-    for url in urls:
-        try:
-            print(f"查詢網址：{url}")
-
-            response = requests.get(
-                url,
-                timeout=30,
-                headers={
-                    "User-Agent": "Mozilla/5.0"
-                }
-            )
-
-            response.encoding = "utf-8"
-
-            if response.status_code == 200:
-                return response.text
-
-            last_error = f"HTTP {response.status_code}"
-
-        except Exception as e:
-            last_error = str(e)
-            print(last_error)
-            time.sleep(3)
-
-    print(f"{keyword} 查詢失敗：{last_error}")
-    return ""
-
-
-def parse_cases(html, keyword):
-    soup = BeautifulSoup(html, "html.parser")
-    text = soup.get_text("\n")
-
-    cases = []
-
-    for line in text.splitlines():
-        line = line.strip()
-
-        if not line:
-            continue
-
-        if not line[0].isdigit():
-            continue
-
-        if ":" not in line and "：" not in line:
-            continue
-
-        if keyword in line:
-            cases.append(line)
-
-    return cases[:10]
-
-
-def build_message(results):
-    message = "今日採購案關鍵字查詢通知\n\n"
-
-    for category, cases in results.items():
-        message += f"【{category}】\n"
-
-        if cases:
-            for case in cases:
-                message += f"{case}\n"
-        else:
-            message += "無\n"
-
-        message += "\n"
-
-    return message
-
-
-def main():
-    results = {}
-
-    for category, keyword in KEYWORDS.items():
-        html = get_html_by_keyword(keyword)
-
-        if not html:
-            results[category] = []
-            continue
-
-        cases = parse_cases(html, keyword)
-        results[category] = cases
-
-    message = build_message(results)
-
-    print(message)
-    send_line_message(message)
-
-
-if __name__ == "__main__":
-    main()
+  UrlFetchApp.fetch(url, {
+    method: "post",
+    contentType: "application/json",
+    headers: {
+      Authorization: "Bearer " + LINE_CHANNEL_ACCESS_TOKEN
+    },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  });
+}
